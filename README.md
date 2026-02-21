@@ -2,6 +2,8 @@
 
 MCP server for managing Nginx Proxy Manager (NPM) instances via Claude/AI assistants. **50 tools** covering the full NPM API.
 
+> Version tracks NPM releases — v2.14.0 targets [Nginx Proxy Manager v2.14.0](https://github.com/NginxProxyManager/nginx-proxy-manager/releases/tag/v2.14.0).
+
 ## Installation
 
 ```bash

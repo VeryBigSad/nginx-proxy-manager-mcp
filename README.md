@@ -6,11 +6,11 @@ MCP server for managing Nginx Proxy Manager (NPM) instances via Claude/AI assist
 
 ```bash
 # Install via uvx (recommended)
-uvx npm-mcp
+uvx nginx-proxy-manager-mcp
 
 # Or install from source
 uv sync
-uv run npm-mcp
+uv run nginx-proxy-manager-mcp
 ```
 
 ## Configuration
@@ -22,7 +22,7 @@ Add to your Claude Desktop config (`~/.config/claude/config.json`):
   "mcpServers": {
     "nginx-proxy-manager": {
       "command": "uvx",
-      "args": ["npm-mcp"],
+      "args": ["nginx-proxy-manager-mcp"],
       "env": {
         "NPM_URL": "http://your-npm-instance:81",
         "NPM_EMAIL": "admin@example.com",

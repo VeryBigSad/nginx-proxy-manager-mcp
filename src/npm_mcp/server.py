@@ -366,10 +366,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "create_proxy_host":
             return _model_response(await npm_client.create_proxy_host(ProxyHost(**arguments)))
         elif name == "update_proxy_host":
-            host_id = arguments.pop("host_id")
+            args = dict(arguments)
+            host_id = args.pop("host_id")
             current = await npm_client.get_proxy_host(host_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_proxy_host(host_id, ProxyHost(**updated_data)))
         elif name == "delete_proxy_host":
             await npm_client.delete_proxy_host(arguments["host_id"])
@@ -389,10 +390,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "create_redirection_host":
             return _model_response(await npm_client.create_redirection_host(RedirectionHost(**arguments)))
         elif name == "update_redirection_host":
-            host_id = arguments.pop("host_id")
+            args = dict(arguments)
+            host_id = args.pop("host_id")
             current = await npm_client.get_redirection_host(host_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_redirection_host(host_id, RedirectionHost(**updated_data)))
         elif name == "delete_redirection_host":
             await npm_client.delete_redirection_host(arguments["host_id"])
@@ -412,10 +414,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "create_stream":
             return _model_response(await npm_client.create_stream(Stream(**arguments)))
         elif name == "update_stream":
-            stream_id = arguments.pop("stream_id")
+            args = dict(arguments)
+            stream_id = args.pop("stream_id")
             current = await npm_client.get_stream(stream_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_stream(stream_id, Stream(**updated_data)))
         elif name == "delete_stream":
             await npm_client.delete_stream(arguments["stream_id"])
@@ -435,10 +438,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "create_dead_host":
             return _model_response(await npm_client.create_dead_host(DeadHost(**arguments)))
         elif name == "update_dead_host":
-            host_id = arguments.pop("host_id")
+            args = dict(arguments)
+            host_id = args.pop("host_id")
             current = await npm_client.get_dead_host(host_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_dead_host(host_id, DeadHost(**updated_data)))
         elif name == "delete_dead_host":
             await npm_client.delete_dead_host(arguments["host_id"])
@@ -475,10 +479,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "create_access_list":
             return _model_response(await npm_client.create_access_list(AccessList(**arguments)))
         elif name == "update_access_list":
-            access_list_id = arguments.pop("access_list_id")
+            args = dict(arguments)
+            access_list_id = args.pop("access_list_id")
             current = await npm_client.get_access_list(access_list_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_access_list(access_list_id, AccessList(**updated_data)))
         elif name == "delete_access_list":
             await npm_client.delete_access_list(arguments["access_list_id"])
@@ -492,10 +497,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "create_user":
             return _model_response(await npm_client.create_user(User(**arguments)))
         elif name == "update_user":
-            user_id = arguments.pop("user_id")
+            args = dict(arguments)
+            user_id = args.pop("user_id")
             current = await npm_client.get_user(user_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_user(user_id, User(**updated_data)))
         elif name == "delete_user":
             await npm_client.delete_user(arguments["user_id"])
@@ -507,10 +513,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "get_setting":
             return _model_response(await npm_client.get_setting(arguments["setting_id"]))
         elif name == "update_setting":
-            setting_id = arguments.pop("setting_id")
+            args = dict(arguments)
+            setting_id = args.pop("setting_id")
             current = await npm_client.get_setting(setting_id)
             updated_data = current.model_dump()
-            updated_data.update(arguments)
+            updated_data.update(args)
             return _model_response(await npm_client.update_setting(setting_id, Setting(**updated_data)))
 
         # --- Audit Log ---

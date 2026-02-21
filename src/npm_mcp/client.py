@@ -1,6 +1,7 @@
 """NPM API client with authentication handling."""
 
 import os
+import re
 from typing import Optional, List
 import httpx
 from .models import (
@@ -25,33 +26,54 @@ class NPMNetworkError(NPMClientError):
     pass
 
 
+def _validate_int_id(value, name: str) -> int:
+    """Cast to int and validate positive. Prevents path traversal via string IDs."""
+    try:
+        int_val = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a positive integer, got: {type(value).__name__}")
+    if int_val < 1:
+        raise ValueError(f"{name} must be >= 1, got: {int_val}")
+    return int_val
+
+
+_SETTING_ID_PATTERN = re.compile(r"^[a-z0-9\-]{1,64}$")
+
+
+def _validate_setting_id(value) -> str:
+    """Validate setting_id is a safe alphanumeric-dash string."""
+    s = str(value)
+    if not _SETTING_ID_PATTERN.match(s):
+        raise ValueError(f"setting_id must match [a-z0-9-]{{1,64}}, got: {s!r}")
+    return s
+
+
 class NPMClient:
     def __init__(self, config: NPMConfig):
         self.config = config
         self.base_url = config.url.rstrip("/") if config.url else ""
         self._token: Optional[str] = None
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._client = httpx.AsyncClient(timeout=30.0, follow_redirects=False)
+        self._validate_config()
 
     def _validate_config(self):
         if not self.config.url:
             raise NPMConfigError("NPM_URL is required but not set")
         if not self.config.email:
             raise NPMConfigError("NPM_EMAIL is required but not set")
-        if not self.config.password:
+        if not self.config.password.get_secret_value():
             raise NPMConfigError("NPM_PASSWORD is required but not set")
 
     async def _get_token(self) -> str:
         if self._token:
             return self._token
 
-        self._validate_config()
-
         try:
             response = await self._client.post(
                 f"{self.base_url}/api/tokens",
                 json={
                     "identity": self.config.email,
-                    "secret": self.config.password,
+                    "secret": self.config.password.get_secret_value(),
                 },
             )
             response.raise_for_status()
@@ -63,15 +85,15 @@ class NPMClient:
                 raise NPMAuthenticationError(
                     "Authentication failed: invalid NPM email or password"
                 ) from e
-            raise NPMNetworkError(f"HTTP error {e.response.status_code}: {e.response.text}") from e
+            raise NPMNetworkError(f"HTTP error {e.response.status_code}") from e
         except httpx.ConnectError as e:
-            raise NPMNetworkError(
-                f"Cannot connect to NPM at {self.base_url}. Check NPM_URL is correct and NPM is running."
-            ) from e
+            raise NPMNetworkError("Cannot connect to NPM. Check NPM_URL and that NPM is running.") from e
         except httpx.TimeoutException as e:
-            raise NPMNetworkError(f"Request to NPM timed out after 30s") from e
+            raise NPMNetworkError("Request to NPM timed out") from e
+        except NPMClientError:
+            raise
         except Exception as e:
-            raise NPMNetworkError(f"Unexpected error connecting to NPM: {e}") from e
+            raise NPMNetworkError(f"Unexpected error: {type(e).__name__}") from e
 
     async def _request(
         self,
@@ -98,22 +120,23 @@ class NPMClient:
 
             response.raise_for_status()
             return response
+        except NPMClientError:
+            raise
         except httpx.HTTPStatusError as e:
             raise NPMNetworkError(
-                f"HTTP {e.response.status_code} error on {method} {path}: {e.response.text}"
+                f"HTTP {e.response.status_code} error on {method} {path}"
             ) from e
         except httpx.ConnectError as e:
-            raise NPMNetworkError(
-                f"Cannot connect to NPM at {self.base_url}. Check network connectivity."
-            ) from e
+            raise NPMNetworkError("Cannot connect to NPM. Check network connectivity.") from e
         except httpx.TimeoutException as e:
-            raise NPMNetworkError(f"Request to NPM timed out after 30s") from e
+            raise NPMNetworkError("Request to NPM timed out") from e
 
     async def list_proxy_hosts(self) -> List[ProxyHost]:
         response = await self._request("GET", "/api/nginx/proxy-hosts")
         return [ProxyHost(**host) for host in response.json()]
 
     async def get_proxy_host(self, host_id: int) -> ProxyHost:
+        host_id = _validate_int_id(host_id, "host_id")
         response = await self._request("GET", f"/api/nginx/proxy-hosts/{host_id}")
         return ProxyHost(**response.json())
 
@@ -126,6 +149,7 @@ class NPMClient:
         return ProxyHost(**response.json())
 
     async def update_proxy_host(self, host_id: int, host: ProxyHost) -> ProxyHost:
+        host_id = _validate_int_id(host_id, "host_id")
         response = await self._request(
             "PUT",
             f"/api/nginx/proxy-hosts/{host_id}",
@@ -134,12 +158,15 @@ class NPMClient:
         return ProxyHost(**response.json())
 
     async def delete_proxy_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("DELETE", f"/api/nginx/proxy-hosts/{host_id}")
 
     async def enable_proxy_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("POST", f"/api/nginx/proxy-hosts/{host_id}/enable")
 
     async def disable_proxy_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("POST", f"/api/nginx/proxy-hosts/{host_id}/disable")
 
     async def list_certificates(self) -> List[Certificate]:
@@ -155,13 +182,16 @@ class NPMClient:
         return Certificate(**response.json())
 
     async def get_certificate(self, cert_id: int) -> Certificate:
+        cert_id = _validate_int_id(cert_id, "certificate_id")
         response = await self._request("GET", f"/api/nginx/certificates/{cert_id}")
         return Certificate(**response.json())
 
     async def delete_certificate(self, cert_id: int) -> None:
+        cert_id = _validate_int_id(cert_id, "certificate_id")
         await self._request("DELETE", f"/api/nginx/certificates/{cert_id}")
 
     async def renew_certificate(self, cert_id: int) -> Certificate:
+        cert_id = _validate_int_id(cert_id, "certificate_id")
         response = await self._request("POST", f"/api/nginx/certificates/{cert_id}/renew")
         return Certificate(**response.json())
 
@@ -188,6 +218,7 @@ class NPMClient:
         return AccessList(**response.json())
 
     async def update_access_list(self, access_list_id: int, access_list: AccessList) -> AccessList:
+        access_list_id = _validate_int_id(access_list_id, "access_list_id")
         response = await self._request(
             "PUT",
             f"/api/nginx/access-lists/{access_list_id}",
@@ -196,10 +227,12 @@ class NPMClient:
         return AccessList(**response.json())
 
     async def get_access_list(self, access_list_id: int) -> AccessList:
+        access_list_id = _validate_int_id(access_list_id, "access_list_id")
         response = await self._request("GET", f"/api/nginx/access-lists/{access_list_id}")
         return AccessList(**response.json())
 
     async def delete_access_list(self, access_list_id: int) -> None:
+        access_list_id = _validate_int_id(access_list_id, "access_list_id")
         await self._request("DELETE", f"/api/nginx/access-lists/{access_list_id}")
 
     async def list_redirection_hosts(self) -> List[RedirectionHost]:
@@ -207,6 +240,7 @@ class NPMClient:
         return [RedirectionHost(**h) for h in response.json()]
 
     async def get_redirection_host(self, host_id: int) -> RedirectionHost:
+        host_id = _validate_int_id(host_id, "host_id")
         response = await self._request("GET", f"/api/nginx/redirection-hosts/{host_id}")
         return RedirectionHost(**response.json())
 
@@ -218,6 +252,7 @@ class NPMClient:
         return RedirectionHost(**response.json())
 
     async def update_redirection_host(self, host_id: int, host: RedirectionHost) -> RedirectionHost:
+        host_id = _validate_int_id(host_id, "host_id")
         response = await self._request(
             "PUT", f"/api/nginx/redirection-hosts/{host_id}",
             json=host.model_dump(exclude_none=True, exclude={"id", "created_on", "modified_on", "owner_user_id"}),
@@ -225,12 +260,15 @@ class NPMClient:
         return RedirectionHost(**response.json())
 
     async def delete_redirection_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("DELETE", f"/api/nginx/redirection-hosts/{host_id}")
 
     async def enable_redirection_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("POST", f"/api/nginx/redirection-hosts/{host_id}/enable")
 
     async def disable_redirection_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("POST", f"/api/nginx/redirection-hosts/{host_id}/disable")
 
     async def list_streams(self) -> List[Stream]:
@@ -238,6 +276,7 @@ class NPMClient:
         return [Stream(**s) for s in response.json()]
 
     async def get_stream(self, stream_id: int) -> Stream:
+        stream_id = _validate_int_id(stream_id, "stream_id")
         response = await self._request("GET", f"/api/nginx/streams/{stream_id}")
         return Stream(**response.json())
 
@@ -249,6 +288,7 @@ class NPMClient:
         return Stream(**response.json())
 
     async def update_stream(self, stream_id: int, stream: Stream) -> Stream:
+        stream_id = _validate_int_id(stream_id, "stream_id")
         response = await self._request(
             "PUT", f"/api/nginx/streams/{stream_id}",
             json=stream.model_dump(exclude_none=True, exclude={"id", "created_on", "modified_on", "owner_user_id"}),
@@ -256,12 +296,15 @@ class NPMClient:
         return Stream(**response.json())
 
     async def delete_stream(self, stream_id: int) -> None:
+        stream_id = _validate_int_id(stream_id, "stream_id")
         await self._request("DELETE", f"/api/nginx/streams/{stream_id}")
 
     async def enable_stream(self, stream_id: int) -> None:
+        stream_id = _validate_int_id(stream_id, "stream_id")
         await self._request("POST", f"/api/nginx/streams/{stream_id}/enable")
 
     async def disable_stream(self, stream_id: int) -> None:
+        stream_id = _validate_int_id(stream_id, "stream_id")
         await self._request("POST", f"/api/nginx/streams/{stream_id}/disable")
 
     async def list_dead_hosts(self) -> List[DeadHost]:
@@ -269,6 +312,7 @@ class NPMClient:
         return [DeadHost(**h) for h in response.json()]
 
     async def get_dead_host(self, host_id: int) -> DeadHost:
+        host_id = _validate_int_id(host_id, "host_id")
         response = await self._request("GET", f"/api/nginx/dead-hosts/{host_id}")
         return DeadHost(**response.json())
 
@@ -280,6 +324,7 @@ class NPMClient:
         return DeadHost(**response.json())
 
     async def update_dead_host(self, host_id: int, host: DeadHost) -> DeadHost:
+        host_id = _validate_int_id(host_id, "host_id")
         response = await self._request(
             "PUT", f"/api/nginx/dead-hosts/{host_id}",
             json=host.model_dump(exclude_none=True, exclude={"id", "created_on", "modified_on", "owner_user_id"}),
@@ -287,12 +332,15 @@ class NPMClient:
         return DeadHost(**response.json())
 
     async def delete_dead_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("DELETE", f"/api/nginx/dead-hosts/{host_id}")
 
     async def enable_dead_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("POST", f"/api/nginx/dead-hosts/{host_id}/enable")
 
     async def disable_dead_host(self, host_id: int) -> None:
+        host_id = _validate_int_id(host_id, "host_id")
         await self._request("POST", f"/api/nginx/dead-hosts/{host_id}/disable")
 
     async def list_users(self) -> List[User]:
@@ -300,6 +348,7 @@ class NPMClient:
         return [User(**u) for u in response.json()]
 
     async def get_user(self, user_id: int) -> User:
+        user_id = _validate_int_id(user_id, "user_id")
         response = await self._request("GET", f"/api/users/{user_id}")
         return User(**response.json())
 
@@ -311,6 +360,7 @@ class NPMClient:
         return User(**response.json())
 
     async def update_user(self, user_id: int, user: User) -> User:
+        user_id = _validate_int_id(user_id, "user_id")
         response = await self._request(
             "PUT", f"/api/users/{user_id}",
             json=user.model_dump(exclude_none=True, exclude={"id", "created_on", "modified_on"}),
@@ -318,6 +368,7 @@ class NPMClient:
         return User(**response.json())
 
     async def delete_user(self, user_id: int) -> None:
+        user_id = _validate_int_id(user_id, "user_id")
         await self._request("DELETE", f"/api/users/{user_id}")
 
     async def list_settings(self) -> List[Setting]:
@@ -325,10 +376,12 @@ class NPMClient:
         return [Setting(**s) for s in response.json()]
 
     async def get_setting(self, setting_id: str) -> Setting:
+        setting_id = _validate_setting_id(setting_id)
         response = await self._request("GET", f"/api/settings/{setting_id}")
         return Setting(**response.json())
 
     async def update_setting(self, setting_id: str, setting: Setting) -> Setting:
+        setting_id = _validate_setting_id(setting_id)
         response = await self._request(
             "PUT", f"/api/settings/{setting_id}",
             json=setting.model_dump(exclude_none=True, exclude={"id"}),

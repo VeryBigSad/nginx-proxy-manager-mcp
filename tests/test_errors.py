@@ -102,7 +102,7 @@ async def test_env_client_creation(monkeypatch):
     client = create_client_from_env()
     assert client.config.url == "http://npm.local:81"
     assert client.config.email == "admin@example.com"
-    assert client.config.password == "changeme"
+    assert client.config.password.get_secret_value() == "changeme"
 
 
 @pytest.mark.asyncio

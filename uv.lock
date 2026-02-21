@@ -453,7 +453,7 @@ wheels = [
 ]
 
 [[package]]
-name = "npm-mcp"
+name = "nginx-proxy-manager-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

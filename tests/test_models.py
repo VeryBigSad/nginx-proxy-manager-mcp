@@ -59,7 +59,7 @@ def test_npm_config():
     )
     assert config.url == "http://npm.local:81"
     assert config.email == "admin@example.com"
-    assert config.password == "secret123"
+    assert config.password.get_secret_value() == "secret123"
 
 
 def test_redirection_host_minimal():

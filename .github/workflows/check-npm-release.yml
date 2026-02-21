@@ -1,0 +1,90 @@
+name: Check NPM upstream release
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest NPM release
+        id: npm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh api repos/NginxProxyManager/nginx-proxy-manager/releases/latest --jq '.tag_name')
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Latest NPM release: ${TAG}"
+
+      - name: Read tracked version
+        id: tracked
+        run: |
+          VERSION=$(cat .github/last-npm-version.txt | tr -d '[:space:]')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Currently tracking: ${VERSION}"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          OLD="${{ steps.tracked.outputs.version }}"
+          NEW="${{ steps.npm.outputs.tag }}"
+
+          old_major=$(echo "${OLD#v}" | cut -d. -f1)
+          old_minor=$(echo "${OLD#v}" | cut -d. -f2)
+          new_major=$(echo "${NEW#v}" | cut -d. -f1)
+          new_minor=$(echo "${NEW#v}" | cut -d. -f2)
+
+          if [ "$new_major" -gt "$old_major" ] || [ "$new_minor" -gt "$old_minor" ]; then
+            echo "bump=true" >> $GITHUB_OUTPUT
+            echo "Minor/major bump detected: ${OLD} → ${NEW}"
+          else
+            echo "bump=false" >> $GITHUB_OUTPUT
+            echo "No minor/major change (${OLD} → ${NEW})"
+          fi
+
+      - name: Create issue
+        if: steps.compare.outputs.bump == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OLD_VERSION: ${{ steps.tracked.outputs.version }}
+          NEW_VERSION: ${{ steps.npm.outputs.tag }}
+        run: |
+          gh label create npm-update --color "d93f0b" --description "Upstream NPM version update" --force
+
+          gh issue create \
+            --title "NPM ${NEW_VERSION} released — check MCP compatibility" \
+            --label "npm-update" \
+            --body "$(cat <<EOF
+          Nginx Proxy Manager [${NEW_VERSION}](https://github.com/NginxProxyManager/nginx-proxy-manager/releases/tag/${NEW_VERSION}) has been released (was tracking ${OLD_VERSION}).
+
+          **Diff**: https://github.com/NginxProxyManager/nginx-proxy-manager/compare/${OLD_VERSION}...${NEW_VERSION}
+
+          ### Checklist
+          - [ ] Review API changes in the release notes
+          - [ ] Check for new/removed/modified endpoints
+          - [ ] Update MCP client, models, and tools if needed
+          - [ ] Bump version in pyproject.toml to match
+          - [ ] Update README version reference
+          - [ ] Publish new version to PyPI
+
+          *This issue will auto-close in 30 days if no action is taken.*
+          EOF
+          )"
+
+      - name: Update tracked version
+        if: steps.compare.outputs.bump == 'true'
+        run: |
+          echo "${{ steps.npm.outputs.tag }}" > .github/last-npm-version.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/last-npm-version.txt
+          git commit -m "track NPM ${{ steps.npm.outputs.tag }}"
+          git push

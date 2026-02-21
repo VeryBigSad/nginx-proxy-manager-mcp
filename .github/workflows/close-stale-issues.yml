@@ -1,0 +1,25 @@
+name: Close stale update issues
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          only-labels: "npm-update"
+          days-before-issue-stale: 30
+          days-before-issue-close: 7
+          stale-issue-label: "stale"
+          stale-issue-message: "No activity in 30 days, marking stale."
+          close-issue-message: "Closing — no action taken within 37 days."
+          days-before-pr-stale: -1
+          days-before-pr-close: -1

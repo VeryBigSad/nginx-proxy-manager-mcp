@@ -1,9 +1,11 @@
 """Tests for MCP server."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 from mcp.types import TextContent
-from npm_mcp.server import call_tool, list_tools, app
+import npm_mcp.server as server_module
+from npm_mcp.server import call_tool, list_tools, app, async_main, main
 from npm_mcp.models import (
     ProxyHost, Certificate, AccessList, RedirectionHost,
     Stream, DeadHost, User, Setting, AuditLogEntry,
@@ -893,3 +895,56 @@ async def test_tool_error_handling():
     assert len(result) == 1
     assert "Error:" in result[0].text
     assert "Network error" in result[0].text
+
+
+@pytest.mark.asyncio
+async def test_lazy_client_initialization():
+    mock_client = AsyncMock()
+    mock_client.list_proxy_hosts.return_value = [
+        ProxyHost(
+            id=1,
+            domain_names=["example.com"],
+            forward_host="192.168.1.100",
+            forward_port=8080,
+        )
+    ]
+
+    original = server_module.npm_client
+    try:
+        server_module.npm_client = None
+        with patch("npm_mcp.server.create_client_from_env", return_value=mock_client) as mock_create:
+            result = await call_tool("list_proxy_hosts", {})
+            mock_create.assert_called_once()
+        assert len(result) == 1
+        assert "example.com" in result[0].text
+    finally:
+        server_module.npm_client = original
+
+
+@pytest.mark.asyncio
+async def test_async_main():
+    mock_read = AsyncMock()
+    mock_write = AsyncMock()
+
+    @asynccontextmanager
+    async def mock_stdio():
+        yield (mock_read, mock_write)
+
+    mock_init_opts = {"some": "options"}
+
+    with (
+        patch("npm_mcp.server.stdio_server", mock_stdio),
+        patch.object(app, "run", new_callable=AsyncMock) as mock_run,
+        patch.object(app, "create_initialization_options", return_value=mock_init_opts),
+    ):
+        await async_main()
+        mock_run.assert_called_once_with(mock_read, mock_write, mock_init_opts)
+
+
+def test_main():
+    with (
+        patch("npm_mcp.server.asyncio.run") as mock_asyncio_run,
+        patch("npm_mcp.server.async_main") as mock_async_main,
+    ):
+        main()
+        mock_asyncio_run.assert_called_once()

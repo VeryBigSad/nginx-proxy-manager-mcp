@@ -1,12 +1,16 @@
 """Tests for error handling and validation."""
 
 import pytest
+from unittest.mock import AsyncMock
 from pytest_httpx import HTTPXMock
 from npm_mcp.client import (
     NPMClient,
+    NPMClientError,
     NPMConfigError,
     NPMAuthenticationError,
     NPMNetworkError,
+    _validate_int_id,
+    _validate_setting_id,
     create_client_from_env,
 )
 from npm_mcp.models import NPMConfig
@@ -174,4 +178,51 @@ async def test_request_timeout_error(httpx_mock: HTTPXMock):
     )
 
     with pytest.raises(NPMNetworkError, match="Request to NPM timed out"):
+        await client.list_proxy_hosts()
+
+
+def test_validate_int_id_type_error():
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        _validate_int_id("abc", "host_id")
+
+
+def test_validate_int_id_none():
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        _validate_int_id(None, "host_id")
+
+
+def test_validate_int_id_zero():
+    with pytest.raises(ValueError, match="must be >= 1"):
+        _validate_int_id(0, "host_id")
+
+
+def test_validate_int_id_negative():
+    with pytest.raises(ValueError, match="must be >= 1"):
+        _validate_int_id(-5, "host_id")
+
+
+def test_validate_setting_id_invalid():
+    with pytest.raises(ValueError, match="setting_id must match"):
+        _validate_setting_id("INVALID!")
+
+
+@pytest.mark.asyncio
+async def test_get_token_reraises_npm_client_error():
+    client = NPMClient(
+        NPMConfig(url="http://npm.local:81", email="admin@example.com", password="changeme")
+    )
+    client._client.post = AsyncMock(side_effect=NPMClientError("custom error"))
+
+    with pytest.raises(NPMClientError, match="custom error"):
+        await client._get_token()
+
+
+@pytest.mark.asyncio
+async def test_request_reraises_npm_client_error():
+    client = NPMClient(
+        NPMConfig(url="http://npm.local:81", email="admin@example.com", password="changeme")
+    )
+    client._get_token = AsyncMock(side_effect=NPMAuthenticationError("auth failed"))
+
+    with pytest.raises(NPMAuthenticationError, match="auth failed"):
         await client.list_proxy_hosts()

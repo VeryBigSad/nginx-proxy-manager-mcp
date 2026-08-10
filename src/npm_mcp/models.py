@@ -1,7 +1,17 @@
 """Data models for NPM entities."""
 
 from typing import List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+
+
+def _list_or_empty(v):
+    """Coerce null from NPM API into an empty list.
+
+    NPM returns `locations: null` / `items: null` / `roles: null` for
+    entities without child records; a bare List field would reject None.
+    """
+    return v if v is not None else []
+
 
 
 class ProxyHostLocation(BaseModel):
@@ -36,6 +46,11 @@ class ProxyHost(BaseModel):
     enabled: bool = True
     locations: List[ProxyHostLocation] = Field(default_factory=list)
 
+    @field_validator("locations", mode="before")
+    @classmethod
+    def _coerce_locations(cls, v):
+        return _list_or_empty(v)
+
 
 class Certificate(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -61,6 +76,11 @@ class AccessList(BaseModel):
     pass_auth: bool = True
     meta: dict = Field(default_factory=dict)
     items: List[dict] = Field(default_factory=list)
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def _coerce_items(cls, v):
+        return _list_or_empty(v)
 
 
 class RedirectionHost(BaseModel):
@@ -133,6 +153,11 @@ class User(BaseModel):
     avatar: str = ""
     roles: List[str] = Field(default_factory=list)
     is_disabled: bool = False
+
+    @field_validator("roles", mode="before")
+    @classmethod
+    def _coerce_roles(cls, v):
+        return _list_or_empty(v)
 
 
 class Setting(BaseModel):

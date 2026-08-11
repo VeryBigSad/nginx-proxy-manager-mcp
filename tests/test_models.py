@@ -34,6 +34,27 @@ def test_proxy_host_with_ssl():
     assert host.forward_scheme == "https"
 
 
+def test_proxy_host_accepts_null_locations():
+    """NPM API returns locations: null for hosts without custom locations."""
+    host = ProxyHost(
+        domain_names=["example.com"],
+        forward_host="192.168.1.100",
+        forward_port=8080,
+        locations=None,
+    )
+    assert host.locations == []
+
+
+def test_access_list_accepts_null_items():
+    al = AccessList(name="Empty List", items=None)
+    assert al.items == []
+
+
+def test_user_accepts_null_roles():
+    user = User(name="Test", email="test@ex.com", roles=None)
+    assert user.roles == []
+
+
 def test_certificate_minimal():
     cert = Certificate(
         nice_name="My Certificate",
